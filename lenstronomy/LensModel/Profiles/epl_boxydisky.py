@@ -94,7 +94,7 @@ class EPL_boxydisky(LensProfileBase):
         t = gamma - 1
         return b, t, q, phi_G
 
-    def set_static(self, theta_E, gamma, e1, e2, center_x=0, center_y=0):
+    def set_static(self, theta_E, gamma, e1, e2, a_m, center_x=0, center_y=0):
         """
 
         :param x: x-coordinate in image plane
@@ -109,6 +109,7 @@ class EPL_boxydisky(LensProfileBase):
         """
         self._static = True
         self._b_static, self._t_static, self._q_static, self._phi_G_static = self._param_conv(theta_E, gamma, e1, e2)
+        self._a_m_static = a_m
 
     def set_dynamic(self):
         """
