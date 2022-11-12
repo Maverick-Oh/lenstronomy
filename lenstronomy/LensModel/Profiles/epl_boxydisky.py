@@ -200,13 +200,15 @@ class EPL_boxydisky(LensProfileBase):
         x__, y__ = util.rotate(x_, y_, phi_G)
         # evaluate
         f__x_epl, f__y_epl = self.epl_major_axis.derivatives(x__, y__, b, t, q)
+        # rotate back
+        f_x_epl, f_y_epl = util.rotate(f__x_epl, f__y_epl, -phi_G)
 
         phi_m = phi_G
-        f__x_multipole, f__y_multipole = self.multipole.derivatives(x_, y_, self.m, a_m, phi_m)
-        # rotate back
-        f__x = f__x_epl + f__x_multipole
-        f__y = f__y_epl + f__y_multipole
-        f_x, f_y = util.rotate(f__x, f__y, -phi_G)
+        f_x_multipole, f_y_multipole = self.multipole.derivatives(x_, y_, self.m, a_m, phi_m)
+
+        f_x = f_x_epl + f_x_multipole
+        f_y = f_y_epl + f_y_multipole
+
         return f_x, f_y
 
     def hessian(self, x, y, theta_E, gamma, e1, e2, a_m, center_x=0, center_y=0):
