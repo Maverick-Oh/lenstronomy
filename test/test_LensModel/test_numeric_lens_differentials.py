@@ -286,7 +286,6 @@ class TestNumericsProfile(object):
         kwargs = {'theta_E': 2., 'e1': 0.1, 'e2': 0., 'gamma': 2.13, 'a_m': 0.01}
         lens_model = ['EPL_boxydisky']
         self.assert_differentials(lens_model, kwargs)
-        print(self.assert_differentials(lens_model, kwargs))
 
     def test_EPL_numba(self):
         kwargs = {'theta_E': 2., 'e1': 0.1, 'e2': 0., 'gamma': 2.13}
