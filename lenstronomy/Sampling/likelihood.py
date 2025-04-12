@@ -429,7 +429,8 @@ class LikelihoodModule(object):
                     print("tracer logL = %s" % logL_tracer)
                 logL += logL_tracer
             self._reset_point_source_cache(bool_input=False)
-        return logL  # , None
+        return logL_cond # For debugging purpose only @@@
+        # return logL  # , None
 
     @staticmethod
     def check_bounds(args, lowerLimit, upperLimit, verbose=False):

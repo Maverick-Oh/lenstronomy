@@ -394,8 +394,7 @@ class FittingSequence(object):
                 start_from_backend=start_from_backend,
             )
             output = [sampler_type, samples, param_list, dist]
-
-        self._mcmc_init_samples = samples  # overwrites previous samples to continue from there in the next MCMC run
+            self._mcmc_init_samples = samples  # overwrites previous samples to continue from there in the next MCMC run
         return output
 
     def pso(

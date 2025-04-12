@@ -227,7 +227,10 @@ class Sampler(object):
         )
 
         sampler.run_mcmc(initpos, n_run_eff, progress=progress)
+        print(f"mean_acceptance_fraction = {np.mean(sampler.acceptance_fraction)}")  # Test Purpose
         flat_samples = sampler.get_chain(discard=n_burn, thin=1, flat=True)
+        print("Acceptance Fraction: ", sampler.acceptance_fraction)
+
         dist = sampler.get_log_prob(flat=True, discard=n_burn, thin=1)
         if pool.is_master():
             print("Computing the MCMC...")
