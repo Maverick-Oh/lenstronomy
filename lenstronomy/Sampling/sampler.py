@@ -192,8 +192,16 @@ class Sampler(object):
                 size=n_walkers,
             )
 
-        pool = choose_pool(mpi=mpi, processes=threadCount, use_dill=True)
+        if type(threadCount) == int:
+            pool = choose_pool(mpi=mpi, processes=threadCount, use_dill=True)
+        elif type(threadCount) == str:
+            assert threadCount == "auto"
+            pool = choose_pool(mpi=mpi, processes=1, use_dill=True) # will be overwritten later
+        else:
+            raise ValueError("type(threadCount) must be either int or str. Given type(threadCount): ",
+                             type(threadCount))
 
+        # figure out n_run_eff and backend setup (shared by all trials)
         if backend_filename is not None:
             backend = emcee.backends.HDFBackend(
                 backend_filename, name="lenstronomy_mcmc_emcee"
@@ -220,12 +228,93 @@ class Sampler(object):
             backend = None
             n_run_eff = n_burn + n_run
 
-        time_start = time.time()
+        # --- AUTO‑TUNING BLOCK: find best threadCount if requested ---
+        if threadCount == "auto":
+            import multiprocessing
+            max_threads = multiprocessing.cpu_count()
+            timings = {}
+            tested = []
 
+            nsteps_test = 20
+
+            def trial(tc):
+                """Run one MCMC timing trial with tc threads."""
+                # reset backend so each trial is fresh
+                print("Optimizing threadCount: Testing threadCount = {}".format(tc))
+                if backend is not None:
+                    backend.reset(n_walkers, num_param)
+                pool = choose_pool(mpi=mpi, processes=tc, use_dill=True)
+                sampler = emcee.EnsembleSampler(
+                    n_walkers, num_param, self.chain.logL, pool=pool, backend=None
+                )
+                t0 = time.time()
+                sampler.run_mcmc(initpos, nsteps=nsteps_test, progress=True)
+                dt = time.time() - t0
+                pool.close()
+                return dt
+
+            # (1) Doubling phase
+            prev = None
+            tc = 1
+            doubling = []
+            while tc <= max_threads:
+                doubling.append(tc)
+                t = trial(tc)
+                timings[tc] = t
+                tested.append(tc)
+                if prev is None or t < prev:
+                    prev = t
+                    tc *= 2
+                else:
+                    break
+
+            # locate best among doubling
+            best_tc = min(doubling, key=lambda x: timings[x])
+            best_time = timings[best_tc]
+
+            # find neighbors around best
+            idx = doubling.index(best_tc)
+            low = doubling[idx - 1] if idx > 0 else 1
+            high = doubling[idx + 1] if idx + 1 < len(doubling) else best_tc
+
+            # (2) Binary‐search phase
+            while True:
+                changed = False
+                # evaluate halfpoints
+                candidates = [
+                    (low + best_tc) // 2,
+                    (best_tc + high) // 2,
+                ]
+                for cand in candidates:
+                    if cand > 0 and cand <= max_threads and cand not in tested:
+                        t = trial(cand)
+                        timings[cand] = t
+                        tested.append(cand)
+                        if t < best_time:
+                            best_time = t
+                            # adjust window
+                            if cand < best_tc:
+                                high = best_tc
+                            else:
+                                low = best_tc
+                            best_tc = cand
+                            changed = True
+                            break
+                if not changed:
+                    break
+
+            threadCount = best_tc
+            print(f"Auto‑tuned threadCount → {threadCount} (took {best_time:.2f}s for {nsteps_test} steps)")
+
+        # -------------------------------------------------------------------
+
+        # Now proceed with the normal, single-run MCMC using the chosen threadCount
+        pool = choose_pool(mpi=mpi, processes=threadCount, use_dill=True)
+
+        time_start = time.time()
         sampler = emcee.EnsembleSampler(
             n_walkers, num_param, self.chain.logL, pool=pool, backend=backend
         )
-
         sampler.run_mcmc(initpos, n_run_eff, progress=progress)
         flat_samples = sampler.get_chain(discard=n_burn, thin=1, flat=True)
         dist = sampler.get_log_prob(flat=True, discard=n_burn, thin=1)
