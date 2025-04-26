@@ -416,6 +416,74 @@ class Sampler(object):
 
         n_run_eff = n_burn + n_run
 
+        # ------------------------------------------------------------------
+        # Auto‑tune threadCount (mirrors mcmc_emcee logic)
+        # ------------------------------------------------------------------
+        if isinstance(threadCount, str):
+            assert threadCount == "auto", "threadCount string must be 'auto'"
+            import multiprocessing
+            max_threads = multiprocessing.cpu_count()
+            timings, tested = {}, []
+            nsteps_test = 20  # short benchmark run
+
+            def trial(tc):
+                """Run a tiny zeus chain to time performance for tc threads."""
+                print(f"Optimizing threadCount: testing {tc}")
+                local_pool = choose_pool(mpi=mpi, processes=tc, use_dill=True)
+                sampler = zeus.EnsembleSampler(
+                    nwalkers=n_walkers, ndim=num_param,
+                    logprob_fn=self.chain.logL,
+                    pool=local_pool, moves=moves,
+                    tune=False,  # speed: no tuning during trial
+                    verbose=False, light_mode=True,
+                )
+                t0 = time.time()
+                sampler.run_mcmc(initpos, nsteps_test, progress=True)
+                dt = time.time() - t0
+                local_pool.close()
+                return dt
+
+            # doubling search
+            prev_time, tc = None, 1
+            doubling = []
+            while tc <= max_threads:
+                doubling.append(tc)
+                t = trial(tc);
+                timings[tc] = t;
+                tested.append(tc)
+                if prev_time is None or t < prev_time:
+                    prev_time, tc = t, tc * 2
+                else:
+                    break
+
+            best_tc = min(doubling, key=timings.get)
+            best_time = timings[best_tc]
+            low = doubling[doubling.index(best_tc) - 1] if best_tc != 1 else 1
+            high = doubling[doubling.index(best_tc) + 1] if best_tc != doubling[-1] else best_tc
+
+            # binary refinement
+            while True:
+                changed = False
+                for cand in {(low + best_tc) // 2, (best_tc + high) // 2}:
+                    if 0 < cand <= max_threads and cand not in tested:
+                        t = trial(cand);
+                        timings[cand] = t;
+                        tested.append(cand)
+                        if t < best_time:
+                            best_time, best_tc, changed = t, cand, True
+                            if cand < best_tc:
+                                high = best_tc
+                            else:
+                                low = best_tc
+                            break
+                if not changed: break
+
+            threadCount = best_tc
+            print(f"Auto‑tuned threadCount → {threadCount}  "
+                  f"(best={best_time:.2f}s for {nsteps_test} steps)")
+        elif not isinstance(threadCount, int):
+            raise ValueError("threadCount must be int or 'auto'")
+
         callback_list = []
 
         if backend_filename is not None:
